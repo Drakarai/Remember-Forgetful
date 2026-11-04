@@ -10,7 +10,8 @@ plugins {
 
 android {
     namespace = "com.lapsusapp.lapsus"
-    compileSdk = flutter.compileSdkVersion
+    // Algunas dependencias (permission_handler) necesitan compilar contra el SDK 37.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
