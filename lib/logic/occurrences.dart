@@ -159,7 +159,7 @@ class Agenda {
   ///
   /// En tareas repetidas solo se muestra la última que se quedó sin hacer, y
   /// solo si hoy no toca otra vez (si hoy toca, ya aparece en "Hoy").
-  List<Occurrence> overdueTasks(DateTime today, {int lookbackDays = 60}) {
+  List<Occurrence> overdueTasks(DateTime today, {int lookbackDays = 365}) {
     final t = dateOnly(today);
     final from = addDays(t, -lookbackDays);
     final yesterday = addDays(t, -1);

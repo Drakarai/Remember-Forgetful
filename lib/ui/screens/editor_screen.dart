@@ -644,7 +644,7 @@ class _CustomRecurrenceScreenState extends State<CustomRecurrenceScreen> {
     if (weekdays.isEmpty) weekdays = {widget.start.weekday};
     monthlyMode = r?.monthlyMode ?? MonthlyMode.dayOfMonth;
     end = r?.until != null ? _End.until : (r?.count != null ? _End.count : _End.never);
-    until = r?.until ?? addDays(widget.start, 30);
+    until = dateOnly(r?.until ?? addDays(widget.start, 30));
     count = r?.count ?? 10;
   }
 
@@ -773,8 +773,8 @@ class _CustomRecurrenceScreenState extends State<CustomRecurrenceScreen> {
                       : () async {
                           final d = await showDatePicker(
                             context: context,
-                            initialDate: until,
-                            firstDate: s,
+                            initialDate: until.isBefore(dateOnly(s)) ? dateOnly(s) : until,
+                            firstDate: dateOnly(s),
                             lastDate: DateTime(2100),
                           );
                           if (d != null) setState(() => until = d);

@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import 'app.dart';
 import 'data/database.dart';
+import 'services/background.dart';
 import 'services/notification_service.dart';
 import 'state/app_state.dart';
 
@@ -48,6 +49,7 @@ Future<void> main() async {
 
   await state.load();
   unawaited(notifications.reschedule(db));
+  unawaited(registerBackgroundRefresh());
 
   runApp(ChangeNotifierProvider.value(value: state, child: const LapsusApp()));
 

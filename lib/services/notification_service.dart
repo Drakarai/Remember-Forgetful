@@ -168,9 +168,9 @@ class NotificationService {
   // Programación
   // ---------------------------------------------------------------------------
 
-  /// Días hacia delante que se programan. Se recalcula cada vez que se abre
-  /// la app o cambia algo, así que basta con una ventana razonable.
-  static const windowDays = 21;
+  /// Días hacia delante que se programan. Se recalcula al abrir la app, al
+  /// cambiar algo y cada 12 horas en segundo plano.
+  static const windowDays = 30;
 
   /// Recalcula y vuelve a programar todos los avisos. Las llamadas se
   /// encadenan para que nunca se pisen dos a la vez.

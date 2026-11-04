@@ -25,13 +25,16 @@ class TodayScreen extends StatelessWidget {
     final overdue = state.overdue(today);
     final todayList = state.onDay(today);
     final upcoming = state.between(addDays(today, 1), addDays(today, 7));
-    final pending = todayList.where((o) => !o.done).length;
+    // Pendiente: tareas sin hacer y eventos que aún no han pasado.
+    final pending = todayList
+        .where((o) => !o.done && (o.item.kind == ItemKind.task || o.effectiveEnd.isAfter(now)))
+        .length;
 
     final status = [
       if (todayList.isEmpty)
         'Nada para hoy'
       else if (pending == 0)
-        'Todo hecho'
+        'Nada pendiente'
       else
         '$pending pendiente${pending == 1 ? '' : 's'}',
       if (overdue.isNotEmpty) '${overdue.length} de días anteriores',
