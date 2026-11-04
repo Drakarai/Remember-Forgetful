@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Evita que la compilación elimine el icono de las notificaciones, que se
+     usa por nombre desde Dart. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_lapsus,@drawable/ic_launcher_*" />

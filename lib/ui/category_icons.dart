@@ -1,0 +1,38 @@
+import 'package:flutter/material.dart';
+
+const categoryIcons = <String, IconData>{
+  'medical': Icons.medical_services_outlined,
+  'pill': Icons.medication_outlined,
+  'card': Icons.credit_card_outlined,
+  'receipt': Icons.receipt_long_outlined,
+  'bank': Icons.account_balance_outlined,
+  'cake': Icons.cake_outlined,
+  'gift': Icons.card_giftcard_outlined,
+  'work': Icons.work_outline,
+  'school': Icons.school_outlined,
+  'book': Icons.menu_book_outlined,
+  'home': Icons.home_outlined,
+  'cleaning': Icons.cleaning_services_outlined,
+  'cart': Icons.shopping_cart_outlined,
+  'food': Icons.restaurant_outlined,
+  'people': Icons.people_outline,
+  'child': Icons.child_care_outlined,
+  'pet': Icons.pets_outlined,
+  'car': Icons.directions_car_outlined,
+  'tools': Icons.build_outlined,
+  'flight': Icons.flight_outlined,
+  'gym': Icons.fitness_center_outlined,
+  'sport': Icons.sports_soccer_outlined,
+  'game': Icons.sports_esports_outlined,
+  'music': Icons.music_note_outlined,
+  'phone': Icons.call_outlined,
+  'mail': Icons.mail_outline,
+  'box': Icons.inventory_2_outlined,
+  'plant': Icons.eco_outlined,
+  'idea': Icons.lightbulb_outline,
+  'key': Icons.key_outlined,
+  'star': Icons.star_outline,
+  'note': Icons.notes_rounded,
+};
+
+IconData categoryIcon(String key) => categoryIcons[key] ?? Icons.notes_rounded;
