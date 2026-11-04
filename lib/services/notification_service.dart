@@ -27,7 +27,7 @@ const _actionSnooze60 = 'snooze60';
 Future<void> notificationBackgroundHandler(NotificationResponse response) async {
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
-  final db = await LapsusDatabase.open();
+  final db = await LapsusDatabase.open(shared: false);
   try {
     final service = NotificationService();
     await service.init();

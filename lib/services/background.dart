@@ -15,12 +15,14 @@ void backgroundDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
       DartPluginRegistrant.ensureInitialized();
-      // No se cierra la base de datos: si la tarea corre dentro de la app
-      // abierta, es la misma conexión que usa la app.
-      final db = await LapsusDatabase.open();
-      final notifications = NotificationService();
-      await notifications.init();
-      await notifications.reschedule(db);
+      final db = await LapsusDatabase.open(shared: false);
+      try {
+        final notifications = NotificationService();
+        await notifications.init();
+        await notifications.reschedule(db);
+      } finally {
+        await db.close();
+      }
     } catch (e) {
       debugPrint('Error en la tarea de fondo: $e');
     }

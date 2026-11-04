@@ -135,4 +135,21 @@ void main() {
 
     expect(() => b.importBackup(Uint8List.fromList([1, 2, 3])), throwsFormatException);
   });
+
+  test('si algo cierra la base de datos, la app la vuelve a abrir', () async {
+    sqfliteFfiInit();
+    final dir = await databaseFactoryFfiNoIsolate.getDatabasesPath();
+    final path = '$dir/reopen_test_${DateTime.now().microsecondsSinceEpoch}.db';
+    final db = await LapsusDatabase.open(path: path, factory: databaseFactoryFfiNoIsolate);
+    final s = AppState(db);
+    await s.load();
+    await s.saveItem(_daily('a'));
+    await db.db.close(); // Lo que hacía antes el botón de la notificación.
+    await s.refresh();
+    expect(s.itemById('a'), isNotNull);
+    await s.toggleDone(s.onDay(DateTime(2026, 11, 2)).single);
+    expect(s.onDay(DateTime(2026, 11, 2)).single.done, isTrue);
+    await db.close();
+    await databaseFactoryFfiNoIsolate.deleteDatabase(path);
+  });
 }

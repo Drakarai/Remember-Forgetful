@@ -37,6 +37,7 @@ class AppState extends ChangeNotifier {
       _categoryMap[id] ?? _categoryMap[Category.otherId] ?? Category.defaults.last;
 
   Future<void> load() async {
+    await db.ensureOpen();
     categories = await db.categories();
     agenda = await db.agenda();
     settings = AppSettings.fromMap(await db.settings());

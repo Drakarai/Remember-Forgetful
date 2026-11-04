@@ -9,17 +9,34 @@ import '../models/item.dart';
 /// Acceso a la base de datos SQLite local. Todo se guarda en el móvil:
 /// funciona sin conexión y sin servidores.
 class LapsusDatabase {
-  final Database db;
-  LapsusDatabase._(this.db);
+  Database db;
+  final DatabaseFactory _factory;
+  final String _path;
+  final bool _singleInstance;
+  LapsusDatabase._(this.db, this._factory, this._path, this._singleInstance);
 
   static const _version = 1;
 
-  static Future<LapsusDatabase> open({String? path, DatabaseFactory? factory}) async {
+  /// [shared] = false abre una conexión propia. Lo usan las tareas en
+  /// segundo plano: en Android la conexión compartida es la misma que la de
+  /// la app abierta, y cerrarla la dejaría sin base de datos.
+  static Future<LapsusDatabase> open({String? path, DatabaseFactory? factory, bool shared = true}) async {
     final f = factory ?? databaseFactory;
     final dbPath = path ?? p.join(await f.getDatabasesPath(), 'lapsus.db');
-    final db = await f.openDatabase(
+    final db = await _openRaw(f, dbPath, shared);
+    return LapsusDatabase._(db, f, dbPath, shared);
+  }
+
+  /// Vuelve a abrir la base de datos si algo la ha cerrado.
+  Future<void> ensureOpen() async {
+    if (!db.isOpen) db = await _openRaw(_factory, _path, _singleInstance);
+  }
+
+  static Future<Database> _openRaw(DatabaseFactory f, String dbPath, bool shared) {
+    return f.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
+        singleInstance: shared,
         version: _version,
         onCreate: (db, _) async {
           await _createSchema(db);
@@ -31,7 +48,6 @@ class LapsusDatabase {
         },
       ),
     );
-    return LapsusDatabase._(db);
   }
 
   static Future<void> _createSchema(DatabaseExecutor db) async {
