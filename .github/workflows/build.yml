@@ -1,8 +1,10 @@
 # Compila Lapsus en los servidores de GitHub (gratis) y publica el APK.
 #
-# - En cada cambio: comprueba el código, pasa los tests y compila el APK.
-# - En la rama principal, además, crea una "Release" con el APK listo para
-#   instalar desde el móvil (y para que Obtainium avise de las actualizaciones).
+# - En cada cambio: comprueba el código, pasa los tests y compila el APK
+#   (sin publicar nada).
+# - Para publicar una versión nueva: pestaña Actions → "Compilar Lapsus" →
+#   "Run workflow" con "Publicar versión" marcado. Crea una Release con el APK
+#   listo para instalar desde el móvil (y Obtainium avisa de la actualización).
 name: Compilar Lapsus
 
 on:
@@ -10,6 +12,11 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      publicar:
+        description: 'Publicar versión'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -93,7 +100,8 @@ jobs:
       - name: Publicar versión
         if: >-
           env.SIGNED == 'true' &&
-          github.event_name != 'pull_request' &&
+          github.event_name == 'workflow_dispatch' &&
+          inputs.publicar &&
           github.ref_name == github.event.repository.default_branch
         env:
           GH_TOKEN: ${{ github.token }}

@@ -31,7 +31,7 @@ Requiere Android 8.0 o superior.
 
 ## Desarrollo
 
-Hecho con Flutter. Cada push compila el APK en GitHub Actions (`.github/workflows/build.yml`); en la rama principal además se publica una Release.
+Hecho con Flutter. Cada push comprueba y compila el APK en GitHub Actions (`.github/workflows/build.yml`) sin publicar nada. Para publicar una versión: *Actions → Compilar Lapsus → Run workflow* con "Publicar versión" marcado.
 
 ```bash
 flutter pub get
