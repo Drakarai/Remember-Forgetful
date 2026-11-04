@@ -9,8 +9,18 @@ import 'theme/app_theme.dart';
 import 'ui/screens/calendar_screen.dart';
 import 'ui/screens/editor_screen.dart';
 import 'ui/screens/onboarding_screen.dart';
+import 'ui/screens/reminder_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/screens/today_screen.dart';
+
+final navigatorKey = GlobalKey<NavigatorState>();
+
+/// Abre la pantalla de un recordatorio (al tocar su notificación).
+void openReminder(String itemId, String dayKey) {
+  final nav = navigatorKey.currentState;
+  if (nav == null) return;
+  nav.push(MaterialPageRoute(builder: (_) => ReminderScreen(itemId: itemId, dayKey: dayKey)));
+}
 
 class LapsusApp extends StatelessWidget {
   const LapsusApp({super.key});
@@ -20,6 +30,7 @@ class LapsusApp extends StatelessWidget {
     final state = context.watch<AppState>();
     final palette = AppPalette.byId(state.settings.themeId);
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Lapsus',
       debugShowCheckedModeBanner: false,
       theme: palette.theme(Brightness.light),

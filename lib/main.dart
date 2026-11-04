@@ -20,11 +20,16 @@ Future<void> main() async {
   final state = AppState(db, notifications: notifications);
 
   await notifications.init(onTap: (response) async {
-    // Botones "Hecho" / "Posponer" pulsados con la app abierta.
     if (response.actionId != null) {
+      // Botones "Hecho" / "Posponer" pulsados con la app abierta.
       await notifications.handleAction(db, response);
+      await state.load();
+      return;
     }
+    // Toque en la notificación: abrir ese recordatorio.
     await state.load();
+    final data = NotificationService.parsePayload(response.payload);
+    if (data != null && state.settings.onboardingDone) openReminder(data.itemId, data.dayKey);
   });
   notifications.onChanged = state.load;
 
@@ -32,4 +37,11 @@ Future<void> main() async {
   unawaited(notifications.reschedule(db));
 
   runApp(ChangeNotifierProvider.value(value: state, child: const LapsusApp()));
+
+  // Si la app se ha abierto desde una notificación, mostrar ese recordatorio.
+  final launch = await notifications.launchResponse();
+  final data = NotificationService.parsePayload(launch?.payload);
+  if (launch != null && launch.actionId == null && data != null && state.settings.onboardingDone) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => openReminder(data.itemId, data.dayKey));
+  }
 }

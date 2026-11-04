@@ -71,9 +71,28 @@ class AppState extends ChangeNotifier {
   // Eventos
   // ---------------------------------------------------------------------------
 
-  Future<void> toggleDone(Occurrence o) async {
-    await db.setDone(o.item.id, o.key, !o.done);
+  Future<void> toggleDone(Occurrence o) => setDone(o, !o.done);
+
+  Future<void> setDone(Occurrence o, bool done) async {
+    await db.setDone(o.item.id, o.key, done);
+    if (done) unawaited(notifications?.cancelShownFor(o.item.id, dayKey: o.key));
     await _changed();
+  }
+
+  /// Pospone los avisos de una aparición.
+  Future<void> snooze(Occurrence o, Duration d) async {
+    await db.snooze(o.item.id, o.key, DateTime.now().add(d));
+    unawaited(notifications?.cancelShownFor(o.item.id, dayKey: o.key));
+    await _changed();
+  }
+
+  /// Busca una aparición concreta (para abrirla desde una notificación).
+  Occurrence? findOccurrence(String itemId, String dayKey) {
+    final day = parseDateKey(dayKey);
+    for (final o in agenda.onDay(day)) {
+      if (o.item.id == itemId) return o;
+    }
+    return null;
   }
 
   /// Guarda un evento nuevo o editado.
@@ -133,6 +152,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> deleteOccurrence(Occurrence o, EditScope scope) async {
     final item = o.item;
+    unawaited(notifications?.cancelShownFor(item.id, dayKey: scope == EditScope.single ? o.key : null));
     if (!item.isRecurring || scope == EditScope.all ||
         (scope == EditScope.following && isSameDay(dateOnly(item.start), o.start))) {
       await db.deleteItem(item.id);

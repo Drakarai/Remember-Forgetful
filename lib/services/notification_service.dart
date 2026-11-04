@@ -198,17 +198,70 @@ class NotificationService {
     );
 
     final exact = await android.canScheduleExactNotifications() ?? false;
-    await _plugin.cancelAllPendingNotifications();
-    for (final p in plans) {
+    // Solo se tocan los avisos que han cambiado: programar cientos de avisos
+    // cada vez que se abre la app sería lento.
+    final wanted = {for (final p in plans) _systemId(p, exact): p};
+    final pending = {for (final r in await _plugin.pendingNotificationRequests()) r.id};
+    for (final id in pending) {
+      if (!wanted.containsKey(id) && !_testIds.contains(id)) await _plugin.cancel(id: id);
+    }
+    for (final entry in wanted.entries) {
+      if (pending.contains(entry.key)) continue;
       try {
-        await _schedule(p, exact: exact);
+        await _schedule(entry.value, exact: exact, id: entry.key);
       } catch (e) {
-        debugPrint('No se pudo programar ${p.title}: $e');
+        debugPrint('No se pudo programar ${entry.value.title}: $e');
       }
     }
   }
 
-  Future<void> _schedule(PlannedNotification p, {required bool exact}) async {
+  /// Id del aviso en el sistema (cambia si cambia el modo exacto/inexacto).
+  int _systemId(PlannedNotification p, bool exact) => stableId('${p.id}|${exact ? 'e' : 'i'}');
+
+  static final _testIds = {for (final p in Priority.values) stableId('test|${p.name}')};
+
+  static String payloadFor(String itemId, String dayKey) => jsonEncode({'item': itemId, 'day': dayKey});
+
+  /// Quita de la barra de notificaciones los avisos ya mostrados de un
+  /// elemento (de un día concreto o de todos).
+  Future<void> cancelShownFor(String itemId, {String? dayKey}) async {
+    final android = _android;
+    if (android == null) return;
+    try {
+      for (final n in await android.getActiveNotifications()) {
+        final data = parsePayload(n.payload);
+        if (data == null || data.itemId != itemId) continue;
+        if (dayKey != null && data.dayKey != dayKey) continue;
+        if (n.id != null) await _plugin.cancel(id: n.id!, tag: n.tag);
+      }
+    } catch (e) {
+      debugPrint('No se pudieron quitar avisos: $e');
+    }
+  }
+
+  static ({String itemId, String dayKey})? parsePayload(String? payload) {
+    if (payload == null) return null;
+    try {
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      final itemId = data['item'] as String?;
+      final day = data['day'] as String?;
+      if (itemId == null || day == null) return null;
+      return (itemId: itemId, dayKey: day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Si la app se ha abierto tocando una notificación, cuál fue.
+  Future<NotificationResponse?> launchResponse() async {
+    try {
+      final details = await _plugin.getNotificationAppLaunchDetails();
+      if (details?.didNotificationLaunchApp ?? false) return details!.notificationResponse;
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _schedule(PlannedNotification p, {required bool exact, int? id}) async {
     final mode = !exact
         ? AndroidScheduleMode.inexactAllowWhileIdle
         : (p.priority == Priority.critical && p.kind != PlanKind.dayBefore && p.kind != PlanKind.hourBefore)
@@ -216,13 +269,13 @@ class NotificationService {
             ? AndroidScheduleMode.alarmClock
             : AndroidScheduleMode.exactAllowWhileIdle;
     await _plugin.zonedSchedule(
-      id: p.id,
+      id: id ?? p.id,
       title: p.title,
       body: p.body,
       scheduledDate: tz.TZDateTime.from(p.when, tz.local),
       notificationDetails: _details(p),
       androidScheduleMode: mode,
-      payload: p.itemId == null ? null : jsonEncode({'item': p.itemId, 'day': p.dayKey}),
+      payload: p.itemId == null ? null : payloadFor(p.itemId!, p.dayKey!),
     );
   }
 
@@ -267,17 +320,10 @@ class NotificationService {
 
   /// Procesa un botón de notificación ("Hecho", "Posponer").
   Future<bool> handleAction(LapsusDatabase db, NotificationResponse response) async {
-    final payload = response.payload;
-    if (payload == null) return false;
-    final Map<String, dynamic> data;
-    try {
-      data = jsonDecode(payload) as Map<String, dynamic>;
-    } catch (_) {
-      return false;
-    }
-    final itemId = data['item'] as String?;
-    final day = data['day'] as String?;
-    if (itemId == null || day == null) return false;
+    final data = parsePayload(response.payload);
+    if (data == null) return false;
+    final itemId = data.itemId;
+    final day = data.dayKey;
     switch (response.actionId) {
       case _actionDone:
         await db.setDone(itemId, day, true);
@@ -288,6 +334,7 @@ class NotificationService {
       default:
         return false;
     }
+    await cancelShownFor(itemId, dayKey: day);
     await reschedule(db);
     onChanged?.call();
     return true;

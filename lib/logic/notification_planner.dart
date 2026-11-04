@@ -120,7 +120,8 @@ List<PlannedNotification> planNotifications({
       return;
     }
     out.add(PlannedNotification(
-      id: stableId('$key|${kind.name}|$n'),
+      // El id incluye hora y textos: si algo cambia, es otro aviso distinto.
+      id: stableId('$key|${kind.name}|$n|${when.millisecondsSinceEpoch}|$title|$body'),
       when: when,
       title: title,
       body: body,
@@ -234,7 +235,7 @@ List<PlannedNotification> planNotifications({
       }).toList();
       if (n > 6) lines.add('+${n - 6} más');
       out.add(PlannedNotification(
-        id: stableId('summary|${entry.key}'),
+        id: stableId('summary|${entry.key}|${when.millisecondsSinceEpoch}|${lines.join('/')}'),
         when: when,
         title: n == 1 ? 'Hoy: 1 pendiente' : 'Hoy: $n pendientes',
         body: lines.join('\n'),

@@ -35,6 +35,8 @@ class _EditorScreenState extends State<EditorScreen> {
   late final bool isNew;
   final _title = TextEditingController();
   final _notes = TextEditingController();
+  final _titleFocus = FocusNode();
+  final _scroll = ScrollController();
 
   late ItemKind kind;
   late String categoryId;
@@ -44,6 +46,12 @@ class _EditorScreenState extends State<EditorScreen> {
   late DateTime date;
   late TimeOfDay time;
   Recurrence? recurrence;
+
+  /// Se activa al pulsar Guardar con algo mal: a partir de ahí se marcan en
+  /// rojo los campos que faltan.
+  bool _showErrors = false;
+  bool _saving = false;
+  late final String _initialSignature;
 
   @override
   void initState() {
@@ -62,16 +70,54 @@ class _EditorScreenState extends State<EditorScreen> {
     date = dateOnly(start);
     time = TimeOfDay.fromDateTime(start);
     recurrence = original.recurrence;
+    _initialSignature = _signature;
+    _title.addListener(() {
+      if (_showErrors) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _title.dispose();
     _notes.dispose();
+    _titleFocus.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
   DateTime get start => allDay ? date : DateTime(date.year, date.month, date.day, time.hour, time.minute);
+
+  String get _signature => [
+        _title.text.trim(),
+        _notes.text.trim(),
+        kind.name,
+        categoryId,
+        priority.name,
+        allDay,
+        start.toIso8601String(),
+        recurrence?.toRRule(start),
+      ].join('|');
+
+  bool get _dirty => _signature != _initialSignature;
+
+  // --- Validación ------------------------------------------------------------
+
+  bool get _titleMissing => _title.text.trim().isEmpty;
+
+  bool get _recurrenceEndsBeforeStart {
+    final until = recurrence?.until;
+    return until != null && dateOnly(until).isBefore(date);
+  }
+
+  List<String> get _problems => [
+        if (_titleMissing) 'Falta el título',
+        if (_recurrenceEndsBeforeStart) 'La repetición termina antes de la fecha de inicio',
+      ];
+
+  bool get _inPast {
+    final now = DateTime.now();
+    return allDay ? date.isBefore(dateOnly(now)) : start.isBefore(now);
+  }
 
   void _selectCategory(Category c) {
     setState(() {
@@ -86,13 +132,18 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _save() async {
-    final title = _title.text.trim();
-    if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ponle un nombre')));
+    if (_saving) return;
+    if (_problems.isNotEmpty) {
+      HapticFeedback.heavyImpact();
+      setState(() => _showErrors = true);
+      if (_scroll.hasClients) {
+        await _scroll.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+      }
+      if (_titleMissing) _titleFocus.requestFocus();
       return;
     }
     final edited = original.copyWith(
-      title: title,
+      title: _title.text.trim(),
       notes: _notes.text.trim(),
       kind: kind,
       categoryId: categoryId,
@@ -109,9 +160,26 @@ class _EditorScreenState extends State<EditorScreen> {
       if (s == null) return;
       scope = s;
     }
-    await state.saveItem(edited, original: isNew ? null : original, occurrence: o, scope: scope);
-    if (mounted) Navigator.of(context).pop();
+    setState(() => _saving = true);
+    try {
+      await state.saveItem(edited, original: isNew ? null : original, occurrence: o, scope: scope);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) await _showError('No se ha podido guardar', e);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
+
+  Future<void> _showError(String title, Object e) => showDialog<void>(
+        context: context,
+        builder: (c) => AlertDialog(
+          icon: Icon(Icons.error_outline_rounded, color: Theme.of(c).colorScheme.error),
+          title: Text(title),
+          content: Text('$e'),
+          actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cerrar'))],
+        ),
+      );
 
   Future<void> _delete() async {
     final o = widget.occurrence!;
@@ -128,14 +196,43 @@ class _EditorScreenState extends State<EditorScreen> {
           content: Text('Se borrará "${original.title}".'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancelar')),
-            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Borrar')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(c).colorScheme.error),
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Borrar'),
+            ),
           ],
         ),
       );
       if (ok != true) return;
     }
-    await state.deleteOccurrence(o, scope);
-    if (mounted) Navigator.of(context).pop();
+    try {
+      await state.deleteOccurrence(o, scope);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) await _showError('No se ha podido borrar', e);
+    }
+  }
+
+  /// Pregunta antes de salir si hay cambios sin guardar.
+  Future<bool> _confirmDiscard() async {
+    if (!_dirty) return true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('¿Descartar cambios?'),
+        content: const Text('Lo que has escrito no se guardará.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Seguir editando')),
+          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Descartar')),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _close() async {
+    if (await _confirmDiscard() && mounted) Navigator.of(context).pop();
   }
 
   Future<void> _pickDate() async {
@@ -170,137 +267,201 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final error = scheme.error;
     final today = dateOnly(DateTime.now());
     final cats = context.watch<AppState>().categories;
+    final problems = _showErrors ? _problems : const <String>[];
+    final titleError = _showErrors && _titleMissing;
+    final recurrenceError = _showErrors && _recurrenceEndsBeforeStart;
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
-        title: Text(isNew ? 'Nuevo' : 'Editar'),
-        actions: [
-          if (!isNew)
-            IconButton(
-              tooltip: 'Borrar',
-              icon: const Icon(Icons.delete_outline_rounded),
-              onPressed: _delete,
-            ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: FilledButton(onPressed: _save, child: const Text('Guardar')),
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'Cerrar',
+            icon: const Icon(Icons.close_rounded),
+            onPressed: _close,
           ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-        children: [
-          SegmentedButton<ItemKind>(
-            showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(value: ItemKind.event, label: Text('Evento'), icon: Icon(Icons.event_rounded)),
-              ButtonSegment(value: ItemKind.task, label: Text('Tarea'), icon: Icon(Icons.task_alt_rounded)),
-            ],
-            selected: {kind},
-            onSelectionChanged: (s) => setState(() => kind = s.first),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-            child: Text(
-              kind == ItemKind.event
-                  ? 'Citas, cumpleaños, reuniones…'
-                  : 'Si no la marcas como hecha, sigue apareciendo los días siguientes.',
-              style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _title,
-            autofocus: isNew,
-            textCapitalization: TextCapitalization.sentences,
-            style: theme.textTheme.titleLarge,
-            decoration: const InputDecoration(hintText: 'Título'),
-            onSubmitted: (_) => _save(),
-          ),
-
-          const SectionHeader('Categoría'),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final c in cats)
-              ChoiceChip(
-                avatar: Icon(categoryIcon(c.icon), size: 18, color: Color(c.color)),
-                label: Text(c.name),
-                selected: categoryId == c.id,
-                onSelected: (_) => _selectCategory(c),
-                showCheckmark: false,
+          title: Text(isNew ? 'Nuevo' : 'Editar'),
+          actions: [
+            if (!isNew)
+              IconButton(
+                tooltip: 'Borrar',
+                icon: const Icon(Icons.delete_outline_rounded),
+                onPressed: _saving ? null : _delete,
               ),
-          ]),
-
-          const SectionHeader('Importancia'),
-          _PriorityPicker(
-            value: priority,
-            onChanged: (p) => setState(() {
-              priority = p;
-              priorityTouched = true;
-            }),
-          ),
-
-          const SectionHeader('Cuándo'),
-          Card(
-            child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: FilledButton(
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Guardar'),
+              ),
+            ),
+          ],
+        ),
+        body: ListView(
+          controller: _scroll,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+          children: [
+            if (problems.isNotEmpty)
               Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                child: Wrap(spacing: 8, runSpacing: 8, children: [
-                  ChoiceChip(
-                    label: const Text('Hoy'),
-                    selected: isSameDay(date, today),
-                    onSelected: (_) => setState(() => date = today),
-                  ),
-                  ChoiceChip(
-                    label: const Text('Mañana'),
-                    selected: isSameDay(date, addDays(today, 1)),
-                    onSelected: (_) => setState(() => date = addDays(today, 1)),
-                  ),
-                  ActionChip(
-                    avatar: const Icon(Icons.calendar_month_rounded, size: 18),
-                    label: Text(fmtLongDate(date)),
-                    onPressed: _pickDate,
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: error.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: error),
+                ),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(Icons.error_outline_rounded, color: error, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Revisa lo marcado en rojo',
+                          style: theme.textTheme.titleSmall?.copyWith(color: error)),
+                      for (final p in problems) Text('• $p', style: theme.textTheme.bodyMedium),
+                    ]),
                   ),
                 ]),
               ),
-              SwitchListTile(
-                title: const Text('Todo el día'),
-                subtitle: allDay
-                    ? Text('Aviso a las ${fmtTimeOfDay(state.settings.allDayTime)}')
-                    : null,
-                value: allDay,
-                onChanged: (v) => setState(() => allDay = v),
+            SegmentedButton<ItemKind>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: ItemKind.event, label: Text('Evento'), icon: Icon(Icons.event_rounded)),
+                ButtonSegment(value: ItemKind.task, label: Text('Tarea'), icon: Icon(Icons.task_alt_rounded)),
+              ],
+              selected: {kind},
+              onSelectionChanged: (s) => setState(() => kind = s.first),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+              child: Text(
+                kind == ItemKind.event
+                    ? 'Citas, cumpleaños, reuniones…'
+                    : 'Si no la marcas como hecha, sigue apareciendo los días siguientes.',
+                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               ),
-              if (!allDay)
-                ListTile(
-                  leading: const Icon(Icons.schedule_rounded),
-                  title: const Text('Hora'),
-                  trailing: Text(fmtTimeOfDay(time), style: theme.textTheme.titleMedium),
-                  onTap: _pickTime,
-                ),
-              const Divider(indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.repeat_rounded),
-                title: const Text('Repetir'),
-                subtitle: Text(describeRecurrence(recurrence, start)),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: _pickRecurrence,
+            ),
+            SectionHeader('Título *', color: titleError ? error : null),
+            TextField(
+              controller: _title,
+              focusNode: _titleFocus,
+              autofocus: isNew,
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.done,
+              style: theme.textTheme.titleLarge,
+              decoration: InputDecoration(
+                hintText: 'Ej.: Llamar al dentista',
+                errorText: titleError ? 'Escribe un título' : null,
               ),
-            ]),
-          ),
+              onSubmitted: (_) => _save(),
+            ),
 
-          const SectionHeader('Notas'),
-          TextField(
-            controller: _notes,
-            minLines: 3,
-            maxLines: 8,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(hintText: 'Opcional'),
-          ),
-        ],
+            const SectionHeader('Categoría'),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final c in cats)
+                ChoiceChip(
+                  avatar: Icon(categoryIcon(c.icon), size: 18, color: Color(c.color)),
+                  label: Text(c.name),
+                  selected: categoryId == c.id,
+                  onSelected: (_) => _selectCategory(c),
+                  showCheckmark: false,
+                ),
+            ]),
+
+            const SectionHeader('Importancia'),
+            _PriorityPicker(
+              value: priority,
+              onChanged: (p) => setState(() {
+                priority = p;
+                priorityTouched = true;
+              }),
+            ),
+
+            SectionHeader('Cuándo', color: recurrenceError ? error : null),
+            Card(
+              shape: recurrenceError
+                  ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: error))
+                  : null,
+              child: Column(children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                  child: Wrap(spacing: 8, runSpacing: 8, children: [
+                    ChoiceChip(
+                      label: const Text('Hoy'),
+                      selected: isSameDay(date, today),
+                      onSelected: (_) => setState(() => date = today),
+                    ),
+                    ChoiceChip(
+                      label: const Text('Mañana'),
+                      selected: isSameDay(date, addDays(today, 1)),
+                      onSelected: (_) => setState(() => date = addDays(today, 1)),
+                    ),
+                    ActionChip(
+                      avatar: const Icon(Icons.calendar_month_rounded, size: 18),
+                      label: Text(fmtLongDate(date)),
+                      onPressed: _pickDate,
+                    ),
+                  ]),
+                ),
+                if (_inPast && (isNew || recurrence == null))
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                    child: Row(children: [
+                      Icon(Icons.info_outline_rounded, size: 16, color: Priority.important.color),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text('Esta fecha ya ha pasado: no habrá avisos.',
+                            style: theme.textTheme.bodySmall?.copyWith(color: Priority.important.color)),
+                      ),
+                    ]),
+                  ),
+                SwitchListTile(
+                  title: const Text('Todo el día'),
+                  subtitle: allDay ? Text('Aviso a las ${fmtTimeOfDay(state.settings.allDayTime)}') : null,
+                  value: allDay,
+                  onChanged: (v) => setState(() => allDay = v),
+                ),
+                if (!allDay)
+                  ListTile(
+                    leading: const Icon(Icons.schedule_rounded),
+                    title: const Text('Hora'),
+                    trailing: Text(fmtTimeOfDay(time), style: theme.textTheme.titleMedium),
+                    onTap: _pickTime,
+                  ),
+                const Divider(indent: 16, endIndent: 16),
+                ListTile(
+                  leading: Icon(Icons.repeat_rounded, color: recurrenceError ? error : null),
+                  title: Text('Repetir', style: TextStyle(color: recurrenceError ? error : null)),
+                  subtitle: Text(
+                    recurrenceError
+                        ? 'Termina antes de la fecha de inicio'
+                        : describeRecurrence(recurrence, start),
+                    style: TextStyle(color: recurrenceError ? error : null),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: _pickRecurrence,
+                ),
+              ]),
+            ),
+
+            const SectionHeader('Notas'),
+            TextField(
+              controller: _notes,
+              minLines: 3,
+              maxLines: 8,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(hintText: 'Opcional'),
+            ),
+          ],
+        ),
       ),
     );
   }

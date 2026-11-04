@@ -87,6 +87,7 @@ class AppPalette {
     final onSurface = dark ? const Color(0xFFE8E8E6) : const Color(0xFF1C1C1E);
     final muted = dark ? const Color(0xFF9A9A9F) : const Color(0xFF6E6E73);
     final line = dark ? const Color(0xFF2C2D31) : const Color(0xFFE3E2DE);
+    final error = dark ? const Color(0xFFFF6B6F) : const Color(0xFFD7263D);
 
     final scheme = ColorScheme.fromSeed(seedColor: accent, brightness: brightness).copyWith(
       primary: primary,
@@ -97,6 +98,7 @@ class AppPalette {
       onSecondaryContainer: primary,
       surface: surface,
       onSurface: onSurface,
+      error: error,
       onSurfaceVariant: muted,
       outline: dark ? const Color(0xFF55565B) : const Color(0xFFB9B8B3),
       outlineVariant: line,
@@ -188,6 +190,11 @@ class AppPalette {
             OutlineInputBorder(borderRadius: BorderRadius.circular(radius), borderSide: BorderSide(color: line)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(radius), borderSide: BorderSide(color: primary, width: 1.5)),
+        errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(radius), borderSide: BorderSide(color: error, width: 1.5)),
+        focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(radius), borderSide: BorderSide(color: error, width: 2)),
+        errorStyle: TextStyle(color: error, fontWeight: FontWeight.w600),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         hintStyle: TextStyle(color: muted),
       ),

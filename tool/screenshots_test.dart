@@ -18,6 +18,8 @@ import 'package:lapsus/models/recurrence.dart';
 import 'package:lapsus/state/app_state.dart';
 import 'package:lapsus/ui/screens/categories_screen.dart';
 import 'package:lapsus/ui/screens/editor_screen.dart';
+import 'package:lapsus/ui/screens/reminder_screen.dart';
+import 'package:lapsus/logic/dates.dart' show dateKey;
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -134,4 +136,17 @@ void main() {
         await t.pumpAndSettle();
       }));
   testWidgets('bienvenida', (t) => shoot(t, '8_bienvenida', 'tinta', ThemeMode.light, onboarding: false));
+  testWidgets('editor con error', (t) => shoot(t, '9_editor_error', 'tinta', ThemeMode.light, then: (t) async {
+        await t.tap(find.byTooltip('Nuevo'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Guardar'));
+        await t.pumpAndSettle();
+      }));
+  testWidgets('recordatorio', (t) => shoot(t, '10_recordatorio', 'tinta', ThemeMode.dark, then: (t) async {
+        final ctx = t.element(find.byType(HomeShell));
+        final state = Provider.of<AppState>(ctx, listen: false);
+        final o = state.onDay(DateTime.now()).firstWhere((o) => o.item.title == 'Dentista');
+        Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => ReminderScreen(itemId: o.item.id, dayKey: dateKey(o.start))));
+        await t.pumpAndSettle();
+      }));
 }
