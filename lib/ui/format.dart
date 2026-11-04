@@ -16,6 +16,13 @@ String fmtLongDate(DateTime d) => _cap(DateFormat("EEEE, d 'de' MMMM", 'es').for
 /// "mar 3 nov"
 String fmtShortDate(DateTime d) => DateFormat('EEE d MMM', 'es').format(d).replaceAll('.', '');
 
+/// "2–8 nov" o "30 nov – 6 dic".
+String fmtWeekRange(DateTime a, DateTime b) {
+  final month = DateFormat('MMM', 'es');
+  String m(DateTime d) => month.format(d).replaceAll('.', '');
+  return a.month == b.month ? '${a.day}–${b.day} ${m(b)}' : '${a.day} ${m(a)} – ${b.day} ${m(b)}';
+}
+
 /// "Noviembre 2026"
 String fmtMonthYear(DateTime d) => _cap(DateFormat('MMMM y', 'es').format(d));
 

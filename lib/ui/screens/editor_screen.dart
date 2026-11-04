@@ -156,7 +156,7 @@ class _EditorScreenState extends State<EditorScreen> {
     var scope = EditScope.all;
     final o = widget.occurrence;
     if (!isNew && original.isRecurring) {
-      final s = await askScope(context, verb: 'Aplicar cambios a');
+      final s = await askScope(context, question: 'Se repite. ¿Qué quieres cambiar?');
       if (s == null) return;
       scope = s;
     }
@@ -185,7 +185,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final o = widget.occurrence!;
     EditScope scope = EditScope.all;
     if (original.isRecurring) {
-      final s = await askScope(context, verb: 'Borrar');
+      final s = await askScope(context, question: 'Se repite. ¿Qué quieres borrar?');
       if (s == null) return;
       scope = s;
     } else {
@@ -538,14 +538,14 @@ class _PriorityOption extends StatelessWidget {
 }
 
 /// Pregunta a qué apariciones de una serie afecta un cambio.
-Future<EditScope?> askScope(BuildContext context, {required String verb}) {
+Future<EditScope?> askScope(BuildContext context, {required String question}) {
   return showModalBottomSheet<EditScope>(
     context: context,
     builder: (c) => SafeArea(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-          child: Text(verb, style: Theme.of(c).textTheme.titleLarge),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(question, style: Theme.of(c).textTheme.titleMedium),
         ),
         ListTile(
           leading: const Icon(Icons.looks_one_outlined),

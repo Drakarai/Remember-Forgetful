@@ -148,4 +148,24 @@ void main() {
         Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => ReminderScreen(itemId: o.item.id, dayKey: dateKey(o.start))));
         await t.pumpAndSettle();
       }));
+  testWidgets('editor de categoría', (t) => shoot(t, '11_editar_categoria', 'bosque', ThemeMode.light, then: (t) async {
+        final ctx = t.element(find.byType(HomeShell));
+        Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => const CategoriesScreen()));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Casa'));
+        await t.pumpAndSettle();
+      }));
+  testWidgets('semana', (t) => shoot(t, '12_semana', 'papel', ThemeMode.dark, then: (t) async {
+        await t.tap(find.text('Calendario'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Semana'));
+        await t.pumpAndSettle();
+      }));
+  testWidgets('editar serie', (t) => shoot(t, '13_editar_serie', 'tinta', ThemeMode.light, then: (t) async {
+        await t.tap(find.text('Sacar la basura').first);
+        await t.pumpAndSettle();
+        await t.enterText(find.byType(TextField).first, 'Sacar la basura y el reciclaje');
+        await t.tap(find.text('Guardar'));
+        await t.pumpAndSettle();
+      }));
 }

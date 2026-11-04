@@ -64,7 +64,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final title = view == CalendarView.month
         ? fmtMonthYear(anchor)
-        : '${fmtShortDate(gridStart)} – ${fmtShortDate(addDays(gridStart, 6))}';
+        : fmtWeekRange(gridStart, addDays(gridStart, 6));
 
     return SafeArea(
       bottom: false,
