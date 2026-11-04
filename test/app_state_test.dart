@@ -152,4 +152,83 @@ void main() {
     await db.close();
     await databaseFactoryFfiNoIsolate.deleteDatabase(path);
   });
+
+  test('deshacer un borrado lo deja todo como estaba', () async {
+    final s = await _state();
+    await s.saveItem(_daily('a'));
+    await s.toggleDone(s.onDay(DateTime(2026, 11, 2)).single);
+    final undo = await s.deleteOccurrence(s.onDay(DateTime(2026, 11, 3)).single, EditScope.all);
+    expect(s.agenda.items, isEmpty);
+    await undo();
+    expect(s.itemById('a'), isNotNull);
+    expect(s.onDay(DateTime(2026, 11, 2)).single.done, isTrue);
+  });
+
+  test('pasar a mañana: una vez en las repetidas, la fecha en las sueltas', () async {
+    final s = await _state();
+    await s.saveItem(_daily('a'));
+    final undo = await s.moveOccurrence(s.onDay(DateTime(2026, 11, 3)).single, DateTime(2026, 11, 4));
+    expect(s.onDay(DateTime(2026, 11, 3)), isEmpty);
+    expect(s.onDay(DateTime(2026, 11, 4)).length, 2, reason: 'la de siempre y la movida');
+    expect(s.onDay(DateTime(2026, 11, 4)).every((o) => o.start.hour == 9), isTrue);
+    await undo();
+    expect(s.onDay(DateTime(2026, 11, 3)).length, 1);
+    expect(s.onDay(DateTime(2026, 11, 4)).length, 1);
+
+    final single = Item(
+      id: 'b',
+      title: 'Pagar',
+      categoryId: 'payments',
+      priority: Priority.normal,
+      kind: ItemKind.task,
+      start: DateTime(2026, 11, 1, 18),
+      createdAt: DateTime(2026),
+    );
+    await s.saveItem(single);
+    await s.moveOccurrence(s.onDay(DateTime(2026, 11, 1)).firstWhere((o) => o.item.id == 'b'), DateTime(2026, 11, 5));
+    expect(s.itemById('b')!.start, DateTime(2026, 11, 5, 18));
+  });
+
+  test('lista de comprobación y año se guardan', () async {
+    final s = await _state();
+    await s.saveItem(_daily('a').copyWith(sinceYear: 1990, checklist: const [CheckEntry('DNI'), CheckEntry('Cargador')]));
+    var item = s.itemById('a')!;
+    expect(item.sinceYear, 1990);
+    expect(item.checklist.map((c) => c.text), ['DNI', 'Cargador']);
+    await s.updateChecklist(item, [item.checklist.first.copyWith(done: true), item.checklist.last]);
+    item = s.itemById('a')!;
+    expect(item.checklist.first.done, isTrue);
+  });
+
+  test('actualizar desde la versión 1 de la base de datos no pierde nada', () async {
+    sqfliteFfiInit();
+    final f = databaseFactoryFfiNoIsolate;
+    final path = '${await f.getDatabasesPath()}/upgrade_${DateTime.now().microsecondsSinceEpoch}.db';
+    final old = await f.openDatabase(path, options: OpenDatabaseOptions(version: 1, onCreate: (db, _) async {
+      await db.execute('CREATE TABLE categories(id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT NOT NULL, '
+          'color INTEGER NOT NULL, default_priority TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0)');
+      await db.execute("CREATE TABLE items(id TEXT PRIMARY KEY, title TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', "
+          'kind TEXT NOT NULL, category_id TEXT NOT NULL, priority TEXT NOT NULL, all_day INTEGER NOT NULL DEFAULT 0, '
+          'start TEXT NOT NULL, rrule TEXT, parent_id TEXT, created_at TEXT NOT NULL)');
+      for (final t in ['skips', 'completions', 'snoozes']) {
+        final extra = t == 'completions' ? ', completed_at TEXT NOT NULL' : (t == 'snoozes' ? ', fire_at TEXT NOT NULL' : '');
+        await db.execute('CREATE TABLE $t(item_id TEXT NOT NULL, day_key TEXT NOT NULL$extra, PRIMARY KEY(item_id, day_key))');
+      }
+      await db.execute('CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+      await db.insert('items', {
+        'id': 'old', 'title': 'Viejo', 'kind': 'event', 'category_id': 'other', 'priority': 'normal',
+        'start': DateTime(2026, 11, 1, 9).toIso8601String(), 'created_at': DateTime(2026).toIso8601String(),
+      });
+    }));
+    await old.close();
+
+    final db = await LapsusDatabase.open(path: path, factory: f);
+    final s = AppState(db);
+    await s.load();
+    expect(s.itemById('old')!.title, 'Viejo');
+    await s.saveItem(s.itemById('old')!.copyWith(sinceYear: 2000, checklist: const [CheckEntry('x')]));
+    expect(s.itemById('old')!.sinceYear, 2000);
+    await db.close();
+    await f.deleteDatabase(path);
+  });
 }

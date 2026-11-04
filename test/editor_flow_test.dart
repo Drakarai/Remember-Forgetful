@@ -92,4 +92,43 @@ void main() {
     expect(find.text('Guardar'), findsNothing, reason: 'el editor debería cerrarse');
     expect(state.agenda.items.single.title, 'Laura');
   });
+
+  testWidgets('escribir "mañana a las 5" sugiere fecha y hora', (t) async {
+    final state = await _pumpApp(t);
+    await t.tap(find.byTooltip('Nuevo'));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField).first, 'Dentista mañana a las 5');
+    await t.pumpAndSettle();
+    expect(find.text('Usar'), findsOneWidget);
+    await t.tap(find.text('Usar'));
+    await t.pumpAndSettle();
+    expect(find.text('Dentista'), findsOneWidget);
+    await t.tap(find.text('Guardar'));
+    await _settle(t);
+    final item = state.agenda.items.single;
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    expect(item.title, 'Dentista');
+    expect([item.start.year, item.start.month, item.start.day, item.start.hour],
+        [tomorrow.year, tomorrow.month, tomorrow.day, 17]);
+  });
+
+  testWidgets('deslizar marca como hecho y se puede deshacer', (t) async {
+    final state = await _pumpApp(t);
+    await t.tap(find.byTooltip('Nuevo'));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField).first, 'Regar');
+    final hoy = find.widgetWithText(ChoiceChip, 'Hoy');
+    await t.scrollUntilVisible(hoy, 200, scrollable: find.byType(Scrollable).first);
+    await t.tap(hoy);
+    await t.pumpAndSettle();
+    await t.tap(find.text('Guardar'));
+    await _settle(t);
+    await t.drag(find.text('Regar'), const Offset(500, 0));
+    await _settle(t);
+    expect(state.onDay(DateTime.now()).single.done, isTrue);
+    expect(find.text('Deshacer'), findsOneWidget);
+    await t.tap(find.text('Deshacer'));
+    await _settle(t);
+    expect(state.onDay(DateTime.now()).single.done, isFalse);
+  });
 }

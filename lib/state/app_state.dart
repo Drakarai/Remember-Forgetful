@@ -16,6 +16,9 @@ import '../services/notification_service.dart';
 /// A qué apariciones afecta un cambio en algo que se repite.
 enum EditScope { single, following, all }
 
+/// Acción para deshacer un cambio.
+typedef Undo = Future<void> Function();
+
 const _uuid = Uuid();
 String newId() => _uuid.v4();
 
@@ -127,16 +130,11 @@ class AppState extends ChangeNotifier {
           final remaining = rule!.count! - before;
           rule = remaining > 0 ? rule.copyWith(count: remaining) : rule.copyWith(clearCount: true);
         }
-        await db.upsertItem(Item(
+        await db.upsertItem(edited.copyWith(
           id: newId(),
-          title: edited.title,
-          notes: edited.notes,
-          kind: edited.kind,
-          categoryId: edited.categoryId,
-          priority: edited.priority,
-          allDay: edited.allDay,
-          start: edited.start,
           recurrence: rule,
+          clearRecurrence: rule == null,
+          clearParent: true,
           createdAt: DateTime.now(),
         ));
     }
@@ -151,8 +149,10 @@ class AppState extends ChangeNotifier {
     ));
   }
 
-  Future<void> deleteOccurrence(Occurrence o, EditScope scope) async {
+  /// Borra y devuelve cómo deshacerlo.
+  Future<Undo> deleteOccurrence(Occurrence o, EditScope scope) async {
     final item = o.item;
+    final snapshot = await db.snapshotItem(item.id);
     unawaited(notifications?.cancelShownFor(item.id, dayKey: scope == EditScope.single ? o.key : null));
     if (!item.isRecurring || scope == EditScope.all ||
         (scope == EditScope.following && isSameDay(dateOnly(item.start), o.start))) {
@@ -163,6 +163,35 @@ class AppState extends ChangeNotifier {
       await _cutSeries(item, o);
     }
     await _changed();
+    return () => _restore(snapshot);
+  }
+
+  Future<void> _restore(Map<String, List<Map<String, Object?>>> snapshot) async {
+    await db.restoreSnapshot(snapshot);
+    await _changed();
+  }
+
+  /// Mueve una aparición a otro día (manteniendo la hora). Si se repite,
+  /// solo se mueve esa vez. Devuelve cómo deshacerlo.
+  Future<Undo> moveOccurrence(Occurrence o, DateTime day) async {
+    final item = o.item;
+    final snapshot = await db.snapshotItem(item.id);
+    final start = DateTime(day.year, day.month, day.day, o.start.hour, o.start.minute);
+    unawaited(notifications?.cancelShownFor(item.id, dayKey: o.key));
+    if (item.isRecurring) {
+      await saveItem(item.copyWith(start: start), original: item, occurrence: o, scope: EditScope.single);
+    } else {
+      await db.setDone(item.id, o.key, false);
+      await db.upsertItem(item.copyWith(start: start));
+      await _changed();
+    }
+    return () => _restore(snapshot);
+  }
+
+  /// Guarda la lista de comprobación de un elemento.
+  Future<void> updateChecklist(Item item, List<CheckEntry> list) async {
+    await db.upsertItem(item.copyWith(checklist: list));
+    await _changed(reschedule: false);
   }
 
   // ---------------------------------------------------------------------------

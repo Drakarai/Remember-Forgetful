@@ -15,7 +15,7 @@ class LapsusDatabase {
   final bool _singleInstance;
   LapsusDatabase._(this.db, this._factory, this._path, this._singleInstance);
 
-  static const _version = 1;
+  static const _version = 2;
 
   /// [shared] = false abre una conexión propia. Lo usan las tareas en
   /// segundo plano: en Android la conexión compartida es la misma que la de
@@ -38,6 +38,12 @@ class LapsusDatabase {
       options: OpenDatabaseOptions(
         singleInstance: shared,
         version: _version,
+        onUpgrade: (db, oldVersion, _) async {
+          if (oldVersion < 2) {
+            await db.execute('ALTER TABLE items ADD COLUMN since_year INTEGER');
+            await db.execute('ALTER TABLE items ADD COLUMN checklist TEXT');
+          }
+        },
         onCreate: (db, _) async {
           await _createSchema(db);
           final batch = db.batch();
@@ -72,7 +78,9 @@ class LapsusDatabase {
         start TEXT NOT NULL,
         rrule TEXT,
         parent_id TEXT,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        since_year INTEGER,
+        checklist TEXT
       )''');
     await db.execute('''
       CREATE TABLE skips(
@@ -169,6 +177,48 @@ class LapsusDatabase {
           await txn.delete('skips', where: 'item_id = ?', whereArgs: [i]);
           await txn.delete('completions', where: 'item_id = ?', whereArgs: [i]);
           await txn.delete('snoozes', where: 'item_id = ?', whereArgs: [i]);
+        }
+      });
+
+  /// Copia de un elemento (con sus excepciones, completados y avisos
+  /// pospuestos) para poder deshacer un cambio.
+  Future<Map<String, List<Map<String, Object?>>>> snapshotItem(String id) async {
+    final items = [
+      ...await db.query('items', where: 'id = ?', whereArgs: [id]),
+      ...await db.query('items', where: 'parent_id = ?', whereArgs: [id]),
+    ];
+    final ids = items.map((r) => r['id'] as String).toList();
+    Future<List<Map<String, Object?>>> rows(String table) async => [
+          for (final i in ids) ...await db.query(table, where: 'item_id = ?', whereArgs: [i]),
+        ];
+    return {
+      'root': [{'id': id}],
+      'items': items,
+      'skips': await rows('skips'),
+      'completions': await rows('completions'),
+      'snoozes': await rows('snoozes'),
+    };
+  }
+
+  /// Deja el elemento exactamente como estaba en [snapshot].
+  Future<void> restoreSnapshot(Map<String, List<Map<String, Object?>>> snapshot) => db.transaction((txn) async {
+        final root = snapshot['root']!.first['id'] as String;
+        final current = <String>{
+          root,
+          for (final r in await txn.query('items', columns: ['id'], where: 'parent_id = ?', whereArgs: [root]))
+            r['id'] as String,
+          for (final r in snapshot['items']!) r['id'] as String,
+        };
+        for (final i in current) {
+          await txn.delete('items', where: 'id = ?', whereArgs: [i]);
+          for (final t in ['skips', 'completions', 'snoozes']) {
+            await txn.delete(t, where: 'item_id = ?', whereArgs: [i]);
+          }
+        }
+        for (final t in ['items', 'skips', 'completions', 'snoozes']) {
+          for (final r in snapshot[t]!) {
+            await txn.insert(t, r, conflictAlgorithm: ConflictAlgorithm.replace);
+          }
         }
       });
 

@@ -68,7 +68,14 @@ Future<AppState> _seed(String theme, ThemeMode mode, {bool onboarding = true}) a
     it('Sacar la basura', 'home', Priority.normal, DateTime(today.year, today.month, today.day, 21),
         kind: ItemKind.task, r: const Recurrence(frequency: Frequency.weekly, weekdays: {1, 3, 5})),
     it('Cumpleaños de Laura', 'birthday', Priority.important, addDays(today, 2),
-        allDay: true, r: const Recurrence(frequency: Frequency.yearly)),
+            allDay: true, r: const Recurrence(frequency: Frequency.yearly))
+        .copyWith(sinceYear: 1996),
+    it('Viaje a Valencia', 'social', Priority.important, DateTime(today.year, today.month, today.day + 1, 8))
+        .copyWith(checklist: const [
+      CheckEntry('DNI', done: true),
+      CheckEntry('Cargador'),
+      CheckEntry('Billetes del tren'),
+    ]),
     it('Cena con amigos', 'social', Priority.normal, DateTime(today.year, today.month, today.day + 3, 21)),
     it('Entregar el trabajo', 'work', Priority.critical, DateTime(today.year, today.month, today.day + 5, 10),
         kind: ItemKind.task),
@@ -166,6 +173,40 @@ void main() {
         await t.pumpAndSettle();
         await t.enterText(find.byType(TextField).first, 'Sacar la basura y el reciclaje');
         await t.tap(find.text('Guardar'));
+        await t.pumpAndSettle();
+      }));
+  testWidgets('sugerencia al escribir', (t) => shoot(t, '14_sugerencia', 'tinta', ThemeMode.light, then: (t) async {
+        await t.tap(find.byTooltip('Nuevo'));
+        await t.pumpAndSettle();
+        await t.enterText(find.byType(TextField).first, 'Sacar la basura todos los lunes y jueves a las 9 de la noche');
+        await t.pumpAndSettle();
+      }));
+  testWidgets('lista en el editor', (t) => shoot(t, '15_lista', 'bosque', ThemeMode.dark, then: (t) async {
+        await t.tap(find.text('Viaje a Valencia'));
+        await t.pumpAndSettle();
+        await t.scrollUntilVisible(find.text('Desmarcar todo'), 300, scrollable: find.byType(Scrollable).first);
+        await t.pumpAndSettle();
+      }));
+  testWidgets('deslizando', (t) => shoot(t, '16_deslizar', 'tinta', ThemeMode.light, then: (t) async {
+        final g = await t.startGesture(t.getCenter(find.text('Sacar la basura')));
+        await g.moveBy(const Offset(-160, 0));
+        await t.pump();
+      }));
+  testWidgets('horas de silencio', (t) => shoot(t, '17_silencio', 'papel', ThemeMode.light, then: (t) async {
+        await t.tap(find.text('Ajustes'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Horas de silencio'));
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+        await t.pumpAndSettle();
+        await t.drag(find.byType(Scrollable).first, const Offset(0, -500));
+        await t.pumpAndSettle();
+      }));
+  testWidgets('recordatorio con lista', (t) => shoot(t, '18_recordatorio_lista', 'ciruela', ThemeMode.dark, then: (t) async {
+        final ctx = t.element(find.byType(HomeShell));
+        final state = Provider.of<AppState>(ctx, listen: false);
+        final tomorrow = DateTime.now().add(const Duration(days: 1));
+        final o = state.onDay(tomorrow).firstWhere((o) => o.item.title == 'Viaje a Valencia');
+        Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => ReminderScreen(itemId: o.item.id, dayKey: dateKey(o.start))));
         await t.pumpAndSettle();
       }));
 }

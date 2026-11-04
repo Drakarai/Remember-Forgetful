@@ -35,7 +35,12 @@ class ReminderScreen extends StatelessWidget {
 
     final item = o.item;
     final category = state.categoryOf(item.categoryId);
-    final when = item.allDay ? '${fmtRelativeDay(o.start)} · todo el día' : '${fmtRelativeDay(o.start)} · ${fmtTime(o.start)}';
+    final years = item.yearsLabel(o.start);
+    final when = [
+      fmtRelativeDay(o.start),
+      item.allDay ? 'todo el día' : fmtTime(o.start),
+      ?years,
+    ].join(' · ');
 
     Future<void> act(Future<void> Function() f, String message) async {
       final messenger = ScaffoldMessenger.of(context);
@@ -73,13 +78,31 @@ class ReminderScreen extends StatelessWidget {
               const SizedBox(width: 6),
               Text(category.name, style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
             ]),
-            if (item.notes.isNotEmpty) ...[
-              const SizedBox(height: 20),
-              Expanded(
-                child: SingleChildScrollView(child: Text(item.notes, style: theme.textTheme.bodyLarge)),
-              ),
-            ] else
-              const Spacer(),
+            const SizedBox(height: 16),
+            Expanded(
+              child: ListView(padding: EdgeInsets.zero, children: [
+                if (item.notes.isNotEmpty) Text(item.notes, style: theme.textTheme.bodyLarge),
+                if (item.checklist.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  for (var i = 0; i < item.checklist.length; i++)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      value: item.checklist[i].done,
+                      title: Text(item.checklist[i].text,
+                          style: TextStyle(
+                            decoration: item.checklist[i].done ? TextDecoration.lineThrough : null,
+                            color: item.checklist[i].done ? scheme.onSurfaceVariant : null,
+                          )),
+                      onChanged: (v) {
+                        final list = [...item.checklist];
+                        list[i] = list[i].copyWith(done: v ?? false);
+                        state.updateChecklist(item, list);
+                      },
+                    ),
+                ],
+              ]),
+            ),
             const SizedBox(height: 16),
             if (o.done)
               SizedBox(

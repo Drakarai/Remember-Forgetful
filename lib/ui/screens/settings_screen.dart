@@ -116,6 +116,41 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
             const Divider(indent: 16, endIndent: 16),
+            SwitchListTile(
+              secondary: const Icon(Icons.bedtime_outlined),
+              title: const Text('Horas de silencio'),
+              subtitle: Text(s.quietEnabled
+                  ? 'De ${fmtTimeOfDay(s.quietStart)} a ${fmtTimeOfDay(s.quietEnd)}. Lo crítico suena igual.'
+                  : 'Los avisos no críticos esperan a la mañana'),
+              value: s.quietEnabled,
+              onChanged: (v) => update(s.copyWith(quietEnabled: v), reschedule: true),
+            ),
+            if (s.quietEnabled)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(56, 0, 16, 12),
+                child: Row(children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        final t = await pickTime(s.quietStart);
+                        if (t != null) await update(s.copyWith(quietStart: t), reschedule: true);
+                      },
+                      child: Text('Desde ${fmtTimeOfDay(s.quietStart)}'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        final t = await pickTime(s.quietEnd);
+                        if (t != null) await update(s.copyWith(quietEnd: t), reschedule: true);
+                      },
+                      child: Text('Hasta ${fmtTimeOfDay(s.quietEnd)}'),
+                    ),
+                  ),
+                ]),
+              ),
+            const Divider(indent: 16, endIndent: 16),
             ListTile(
               leading: const Icon(Icons.notifications_outlined),
               title: const Text('Permisos y prueba de avisos'),

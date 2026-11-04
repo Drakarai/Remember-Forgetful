@@ -21,6 +21,12 @@ class PlannerSettings {
   final int summaryHour;
   final int summaryMinute;
 
+  /// Horas de silencio: los avisos no críticos que caigan dentro se
+  /// retrasan hasta que terminan. Minutos desde medianoche.
+  final bool quietEnabled;
+  final int quietStart;
+  final int quietEnd;
+
   const PlannerSettings({
     this.allDayHour = 9,
     this.allDayMinute = 0,
@@ -30,7 +36,25 @@ class PlannerSettings {
     this.summaryEnabled = true,
     this.summaryHour = 8,
     this.summaryMinute = 0,
+    this.quietEnabled = false,
+    this.quietStart = 23 * 60,
+    this.quietEnd = 8 * 60,
   });
+
+  /// Si [t] cae en horas de silencio, devuelve cuándo terminan; si no, null.
+  DateTime? quietUntil(DateTime t) {
+    if (!quietEnabled || quietStart == quietEnd) return null;
+    final m = t.hour * 60 + t.minute;
+    final endToday = DateTime(t.year, t.month, t.day, quietEnd ~/ 60, quietEnd % 60);
+    if (quietStart < quietEnd) {
+      // Mismo día (p. ej. 14:00–16:00).
+      return m >= quietStart && m < quietEnd ? endToday : null;
+    }
+    // Cruza la medianoche (p. ej. 23:00–08:00).
+    if (m >= quietStart) return endToday.add(const Duration(days: 1));
+    if (m < quietEnd) return endToday;
+    return null;
+  }
 }
 
 enum PlanKind { dayBefore, hourBefore, atTime, nag, followUp, snooze, summary }
@@ -109,6 +133,15 @@ List<PlannedNotification> planNotifications({
 
   void add(Occurrence o, PlanKind kind, DateTime when, String title, String body,
       {int n = 0, bool insistent = false}) {
+    // Horas de silencio: lo no crítico espera a que terminen.
+    if (o.item.priority != Priority.critical) {
+      final until = settings.quietUntil(when);
+      if (until != null) {
+        if (kind != PlanKind.atTime) return;
+        when = until;
+        if (body.startsWith('Ahora · ')) body = body.replaceFirst('Ahora · ', 'Era a las ');
+      }
+    }
     if (!when.isAfter(now)) return;
     final key = '${o.item.id}|${o.key}';
     // Si está pospuesto, no molestar con insistencias antes de la hora nueva.
@@ -140,26 +173,28 @@ List<PlannedNotification> planNotifications({
     final title = item.title;
     final isTask = item.kind == ItemKind.task;
     final day = dateOnly(o.start);
+    final years = item.yearsLabel(o.start);
+    String y(String body) => years == null ? body : '$body · $years';
 
     if (item.allDay) {
       final at = DateTime(day.year, day.month, day.day, settings.allDayHour, settings.allDayMinute);
       switch (item.priority) {
         case Priority.critical:
           add(o, PlanKind.dayBefore,
-              DateTime(day.year, day.month, day.day - 1, settings.eveningHour), title, 'Mañana');
-          add(o, PlanKind.atTime, at, title, 'Hoy', insistent: true);
+              DateTime(day.year, day.month, day.day - 1, settings.eveningHour), title, y('Mañana'));
+          add(o, PlanKind.atTime, at, title, y('Hoy'), insistent: true);
           for (var n = 1; n <= settings.nagCount; n++) {
             add(o, PlanKind.nag, at.add(Duration(minutes: settings.nagIntervalMinutes * n * 6)), title,
                 'Sigue pendiente', n: n);
           }
         case Priority.important:
-          add(o, PlanKind.atTime, at, title, 'Hoy');
+          add(o, PlanKind.atTime, at, title, y('Hoy'));
           final evening = DateTime(day.year, day.month, day.day, 19);
           if (isTask && evening.isAfter(at)) {
             add(o, PlanKind.followUp, evening, title, 'Aún sin marcar como hecho');
           }
         case Priority.normal:
-          add(o, PlanKind.atTime, at, title, 'Hoy');
+          add(o, PlanKind.atTime, at, title, y('Hoy'));
         case Priority.none:
           break;
       }
@@ -168,21 +203,21 @@ List<PlannedNotification> planNotifications({
       final time = hhmm(t);
       switch (item.priority) {
         case Priority.critical:
-          add(o, PlanKind.dayBefore, t.subtract(const Duration(days: 1)), title, 'Mañana a las $time');
+          add(o, PlanKind.dayBefore, t.subtract(const Duration(days: 1)), title, y('Mañana a las $time'));
           add(o, PlanKind.hourBefore, t.subtract(const Duration(hours: 1)), title, 'Dentro de 1 hora · $time');
-          add(o, PlanKind.atTime, t, title, 'Ahora · $time', insistent: true);
+          add(o, PlanKind.atTime, t, title, y('Ahora · $time'), insistent: true);
           for (var n = 1; n <= settings.nagCount; n++) {
             add(o, PlanKind.nag, t.add(Duration(minutes: settings.nagIntervalMinutes * n)), title,
                 'Sigue pendiente (era a las $time)', n: n);
           }
         case Priority.important:
           add(o, PlanKind.hourBefore, t.subtract(const Duration(hours: 1)), title, 'Dentro de 1 hora · $time');
-          add(o, PlanKind.atTime, t, title, 'Ahora · $time');
+          add(o, PlanKind.atTime, t, title, y('Ahora · $time'));
           if (isTask) {
             add(o, PlanKind.followUp, t.add(const Duration(minutes: 30)), title, 'Aún sin marcar como hecho');
           }
         case Priority.normal:
-          add(o, PlanKind.atTime, t, title, 'Ahora · $time');
+          add(o, PlanKind.atTime, t, title, y('Ahora · $time'));
         case Priority.none:
           break;
       }

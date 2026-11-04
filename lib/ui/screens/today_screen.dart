@@ -54,14 +54,20 @@ class TodayScreen extends StatelessWidget {
           _PermissionBanner(report: permissions!),
         ],
         if (overdue.isNotEmpty) ...[
-          SectionHeader('Sin hacer', color: Priority.important.color),
+          SectionHeader('Sin hacer', color: Priority.important.color, trailing: '← para pasar a hoy'),
           OccurrenceGroup(overdue, note: (o) => fmtAgo(o.start)),
         ],
         const SectionHeader('Hoy'),
         if (todayList.isEmpty)
           const EmptyNote('No hay nada apuntado. Usa el botón + para añadir algo.')
-        else
+        else ...[
           OccurrenceGroup(todayList),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+            child: Text('Desliza → para marcar como hecho · ← para pasarlo a mañana',
+                style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          ),
+        ],
         if (upcoming.isNotEmpty) ...[
           const SectionHeader('Próximos 7 días'),
           ..._byDay(context, upcoming),

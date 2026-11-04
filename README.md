@@ -17,6 +17,11 @@ Además:
 - Resumen diario por la mañana.
 - Botones "Hecho" y "Posponer" en las notificaciones.
 - Cinco temas de color con modo claro y oscuro.
+- Escribir con fechas: "dentista mañana a las 5" o "pastilla todos los días a las 9" propone fecha, hora y repetición.
+- Deslizar una fila: → marca como hecho, ← la pasa a mañana (o a hoy si estaba atrasada). Todo se puede deshacer.
+- Horas de silencio: los avisos no críticos esperan a que terminen.
+- Cumpleaños con año de nacimiento: el aviso dice cuántos cumple.
+- Lista de comprobación opcional dentro de cada evento.
 - Todo se guarda en el móvil. Exportar/importar desde Ajustes.
 
 ## Instalar

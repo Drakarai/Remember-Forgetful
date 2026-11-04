@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../logic/dates.dart';
+import '../../logic/quick_parse.dart';
 import '../../models/category.dart';
 import '../../models/item.dart';
 import '../../models/priority.dart';
@@ -46,6 +47,12 @@ class _EditorScreenState extends State<EditorScreen> {
   late DateTime date;
   late TimeOfDay time;
   Recurrence? recurrence;
+  final _year = TextEditingController();
+  final List<_CheckRow> _checklist = [];
+  bool _showChecklist = false;
+
+  /// Fecha/hora/repetición detectadas al escribir el título.
+  QuickParse? _suggestion;
 
   /// Se activa al pulsar Guardar con algo mal: a partir de ahí se marcan en
   /// rojo los campos que faltan.
@@ -70,11 +77,48 @@ class _EditorScreenState extends State<EditorScreen> {
     date = dateOnly(start);
     time = TimeOfDay.fromDateTime(start);
     recurrence = original.recurrence;
+    _year.text = original.sinceYear?.toString() ?? '';
+    for (final c in original.checklist) {
+      _checklist.add(_CheckRow(c.text, c.done));
+    }
+    _showChecklist = _checklist.isNotEmpty;
     _initialSignature = _signature;
-    _title.addListener(() {
+    _title.addListener(_onTitleChanged);
+    _year.addListener(() {
       if (_showErrors) setState(() {});
     });
   }
+
+  void _onTitleChanged() {
+    final p = parseQuick(_title.text, DateTime.now());
+    setState(() => _suggestion = p.found && p.title.isNotEmpty ? p : null);
+  }
+
+  void _applySuggestion() {
+    final p = _suggestion;
+    if (p == null) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (p.date != null) date = p.date!;
+      if (p.hour != null) {
+        allDay = false;
+        time = TimeOfDay(hour: p.hour!, minute: p.minute ?? 0);
+      }
+      if (p.recurrence != null) recurrence = p.recurrence;
+      _suggestion = null;
+    });
+    _title.value = TextEditingValue(
+      text: p.title,
+      selection: TextSelection.collapsed(offset: p.title.length),
+    );
+  }
+
+  String _describeSuggestion(QuickParse p) => [
+        if (p.date != null) fmtRelativeDay(p.date!),
+        if (p.hour != null)
+          'a las ${p.hour.toString().padLeft(2, '0')}:${(p.minute ?? 0).toString().padLeft(2, '0')}',
+        if (p.recurrence != null) describeRecurrence(p.recurrence, p.date ?? date).toLowerCase(),
+      ].join(' · ');
 
   @override
   void dispose() {
@@ -82,6 +126,10 @@ class _EditorScreenState extends State<EditorScreen> {
     _notes.dispose();
     _titleFocus.dispose();
     _scroll.dispose();
+    _year.dispose();
+    for (final r in _checklist) {
+      r.dispose();
+    }
     super.dispose();
   }
 
@@ -96,6 +144,8 @@ class _EditorScreenState extends State<EditorScreen> {
         allDay,
         start.toIso8601String(),
         recurrence?.toRRule(start),
+        _year.text.trim(),
+        for (final r in _checklist) '${r.done}${r.text.text}',
       ].join('|');
 
   bool get _dirty => _signature != _initialSignature;
@@ -109,9 +159,20 @@ class _EditorScreenState extends State<EditorScreen> {
     return until != null && dateOnly(until).isBefore(date);
   }
 
+  bool get _yearlyRecurrence => recurrence?.frequency == Frequency.yearly;
+
+  int? get _sinceYear => _yearlyRecurrence ? int.tryParse(_year.text.trim()) : null;
+
+  bool get _yearInvalid {
+    if (!_yearlyRecurrence || _year.text.trim().isEmpty) return false;
+    final y = _sinceYear;
+    return y == null || y < 1900 || y > date.year;
+  }
+
   List<String> get _problems => [
         if (_titleMissing) 'Falta el título',
         if (_recurrenceEndsBeforeStart) 'La repetición termina antes de la fecha de inicio',
+        if (_yearInvalid) 'El año no es válido',
       ];
 
   bool get _inPast {
@@ -152,6 +213,12 @@ class _EditorScreenState extends State<EditorScreen> {
       start: start,
       recurrence: recurrence,
       clearRecurrence: recurrence == null,
+      sinceYear: _sinceYear,
+      clearSinceYear: _sinceYear == null,
+      checklist: [
+        for (final r in _checklist)
+          if (r.text.text.trim().isNotEmpty) CheckEntry(r.text.text.trim(), done: r.done),
+      ],
     );
     var scope = EditScope.all;
     final o = widget.occurrence;
@@ -188,27 +255,18 @@ class _EditorScreenState extends State<EditorScreen> {
       final s = await askScope(context, question: 'Se repite. ¿Qué quieres borrar?');
       if (s == null) return;
       scope = s;
-    } else {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('¿Borrar?'),
-          content: Text('Se borrará "${original.title}".'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancelar')),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Theme.of(c).colorScheme.error),
-              onPressed: () => Navigator.pop(c, true),
-              child: const Text('Borrar'),
-            ),
-          ],
-        ),
-      );
-      if (ok != true) return;
     }
+    if (!mounted) return;
     try {
-      await state.deleteOccurrence(o, scope);
+      final messenger = ScaffoldMessenger.of(context);
+      final undo = await state.deleteOccurrence(o, scope);
       if (mounted) Navigator.of(context).pop();
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text('Borrado: ${original.title}'),
+          action: SnackBarAction(label: 'Deshacer', onPressed: undo),
+        ));
     } catch (e) {
       if (mounted) await _showError('No se ha podido borrar', e);
     }
@@ -273,6 +331,8 @@ class _EditorScreenState extends State<EditorScreen> {
     final problems = _showErrors ? _problems : const <String>[];
     final titleError = _showErrors && _titleMissing;
     final recurrenceError = _showErrors && _recurrenceEndsBeforeStart;
+    final yearError = _showErrors && _yearInvalid;
+    final suggestion = _suggestion;
 
     return PopScope(
       canPop: !_dirty,
@@ -362,6 +422,41 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
               onSubmitted: (_) => _save(),
             ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              alignment: Alignment.topCenter,
+              child: suggestion == null
+                  ? const SizedBox(width: double.infinity)
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Material(
+                        color: scheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: _applySuggestion,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                            child: Row(children: [
+                              Icon(Icons.event_available_rounded, size: 20, color: scheme.primary),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Text(_describeSuggestion(suggestion),
+                                      style: theme.textTheme.titleSmall?.copyWith(color: scheme.primary)),
+                                  Text('"${suggestion.title}"',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                                ]),
+                              ),
+                              TextButton(onPressed: _applySuggestion, child: const Text('Usar')),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
 
             const SectionHeader('Categoría'),
             Wrap(spacing: 8, runSpacing: 8, children: [
@@ -449,8 +544,110 @@ class _EditorScreenState extends State<EditorScreen> {
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: _pickRecurrence,
                 ),
+                if (_yearlyRecurrence)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                    child: TextField(
+                      controller: _year,
+                      keyboardType: TextInputType.number,
+                      maxLength: 4,
+                      decoration: InputDecoration(
+                        labelText: categoryId == Category.birthdayId
+                            ? 'Año de nacimiento (opcional)'
+                            : 'Año en que empezó (opcional)',
+                        helperText: categoryId == Category.birthdayId
+                            ? 'Para saber cuántos cumple'
+                            : 'Para saber cuántos años hace',
+                        counterText: '',
+                        errorText: yearError ? 'Escribe un año entre 1900 y ${date.year}' : null,
+                      ),
+                    ),
+                  ),
               ]),
             ),
+
+            const SectionHeader('Lista'),
+            if (!_showChecklist)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: () => setState(() {
+                    _showChecklist = true;
+                    if (_checklist.isEmpty) _checklist.add(_CheckRow('', false)..focus.requestFocus());
+                  }),
+                  icon: const Icon(Icons.checklist_rounded),
+                  label: const Text('Añadir lista de cosas'),
+                ),
+              )
+            else
+              Card(
+                child: Column(children: [
+                  for (final r in _checklist)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4, right: 4),
+                      child: Row(children: [
+                        Checkbox(value: r.done, onChanged: (v) => setState(() => r.done = v ?? false)),
+                        Expanded(
+                          child: TextField(
+                            controller: r.text,
+                            focusNode: r.focus,
+                            textCapitalization: TextCapitalization.sentences,
+                            textInputAction: TextInputAction.next,
+                            style: TextStyle(
+                              decoration: r.done ? TextDecoration.lineThrough : null,
+                              color: r.done ? scheme.onSurfaceVariant : null,
+                            ),
+                            decoration: const InputDecoration(
+                              hintText: 'Algo que llevar o hacer',
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              isDense: true,
+                            ),
+                            onChanged: (_) => setState(() {}),
+                            onSubmitted: (_) => setState(() {
+                              final row = _CheckRow('', false);
+                              _checklist.insert(_checklist.indexOf(r) + 1, row);
+                              row.focus.requestFocus();
+                            }),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Quitar',
+                          icon: const Icon(Icons.close_rounded, size: 20),
+                          onPressed: () => setState(() {
+                            _checklist.remove(r);
+                            r.dispose();
+                            if (_checklist.isEmpty) _showChecklist = false;
+                          }),
+                        ),
+                      ]),
+                    ),
+                  const Divider(),
+                  Row(children: [
+                    TextButton.icon(
+                      onPressed: () => setState(() {
+                        final row = _CheckRow('', false);
+                        _checklist.add(row);
+                        row.focus.requestFocus();
+                      }),
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Añadir'),
+                    ),
+                    const Spacer(),
+                    if (_checklist.any((r) => r.done))
+                      TextButton(
+                        onPressed: () => setState(() {
+                          for (final r in _checklist) {
+                            r.done = false;
+                          }
+                        }),
+                        child: const Text('Desmarcar todo'),
+                      ),
+                  ]),
+                ]),
+              ),
 
             const SectionHeader('Notas'),
             TextField(
@@ -840,5 +1037,18 @@ class _DayToggle extends StatelessWidget {
             style: TextStyle(fontWeight: FontWeight.w800, color: selected ? scheme.onPrimary : scheme.onSurface)),
       ),
     );
+  }
+}
+
+/// Una línea editable de la lista de comprobación.
+class _CheckRow {
+  final TextEditingController text;
+  final FocusNode focus = FocusNode();
+  bool done;
+  _CheckRow(String value, this.done) : text = TextEditingController(text: value);
+
+  void dispose() {
+    text.dispose();
+    focus.dispose();
   }
 }

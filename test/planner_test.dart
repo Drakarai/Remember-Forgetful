@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lapsus/logic/notification_planner.dart';
 import 'package:lapsus/models/item.dart';
 import 'package:lapsus/models/priority.dart';
+import 'package:lapsus/models/recurrence.dart';
 
 Occurrence _occ(Priority p, DateTime start,
         {bool allDay = false, ItemKind kind = ItemKind.event, bool done = false}) =>
@@ -140,5 +141,50 @@ void main() {
     ];
     final l = planNotifications(occurrences: occs, now: now, settings: settings, maxCount: 50);
     expect(l.length, 50);
+  });
+
+  test('horas de silencio: lo normal espera, lo crítico no', () {
+    const quiet = PlannerSettings(summaryEnabled: false, quietEnabled: true, quietStart: 23 * 60, quietEnd: 8 * 60);
+    final normal = planNotifications(
+        occurrences: [_occ(Priority.normal, DateTime(2026, 11, 5, 23, 30))], now: now, settings: quiet);
+    expect(normal.single.when, DateTime(2026, 11, 6, 8));
+    expect(normal.single.body, 'Era a las 23:30');
+
+    final important = planNotifications(
+        occurrences: [_occ(Priority.important, DateTime(2026, 11, 6, 7, 30), kind: ItemKind.task)],
+        now: now,
+        settings: quiet);
+    // El de 1 h antes y el "¿lo hiciste?" (8:00) caen o no en silencio:
+    // solo queda el principal (movido a las 8) y el recordatorio de las 8:00.
+    expect(important.map((n) => n.when).toSet(), {DateTime(2026, 11, 6, 8)});
+
+    final critical = planNotifications(
+        occurrences: [_occ(Priority.critical, DateTime(2026, 11, 5, 23, 30))], now: now, settings: quiet);
+    expect(critical.any((n) => n.kind == PlanKind.atTime && n.when == DateTime(2026, 11, 5, 23, 30)), isTrue);
+
+    const daytime = PlannerSettings(quietEnabled: true, quietStart: 14 * 60, quietEnd: 16 * 60);
+    expect(daytime.quietUntil(DateTime(2026, 11, 5, 15)), DateTime(2026, 11, 5, 16));
+    expect(daytime.quietUntil(DateTime(2026, 11, 5, 17)), isNull);
+  });
+
+  test('cumpleaños con año: el aviso dice la edad', () {
+    final item = Item(
+      id: 'b',
+      title: 'Cumpleaños de Laura',
+      categoryId: 'birthday',
+      priority: Priority.normal,
+      allDay: true,
+      start: DateTime(1996, 11, 5),
+      recurrence: const Recurrence(frequency: Frequency.yearly),
+      sinceYear: 1996,
+      createdAt: DateTime(2026),
+    );
+    final l = planNotifications(
+      occurrences: [Occurrence(item: item, start: DateTime(2026, 11, 5))],
+      now: now,
+      settings: settings,
+    );
+    expect(l.single.body, 'Hoy · cumple 30');
+    expect(item.copyWith(categoryId: 'other').yearsLabel(DateTime(2026, 11, 5)), '30 años');
   });
 }
