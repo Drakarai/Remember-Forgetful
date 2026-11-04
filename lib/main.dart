@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
@@ -12,6 +14,17 @@ import 'state/app_state.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Los errores no previstos se enseñan en pantalla (y no se pierden).
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('$error\n$stack');
+    reportError(error);
+    return true;
+  };
+  final defaultFlutterError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    defaultFlutterError?.call(details);
+    reportError(details.exception);
+  };
   Intl.defaultLocale = 'es';
   await initializeDateFormatting('es');
 

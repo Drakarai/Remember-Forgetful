@@ -73,4 +73,23 @@ void main() {
     await t.pump();
     expect(find.text('Escribe un título'), findsNothing);
   });
+
+  testWidgets('cumpleaños hoy con nombre se guarda', (t) async {
+    final state = await _pumpApp(t);
+    await t.tap(find.byTooltip('Nuevo'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Cumpleaños'));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField).first, 'Laura');
+    final hoy = find.widgetWithText(ChoiceChip, 'Hoy');
+    await t.scrollUntilVisible(hoy, 200, scrollable: find.byType(Scrollable).first);
+    await t.tap(hoy);
+    await t.pumpAndSettle();
+    await t.tap(find.text('Guardar'));
+    await _settle(t);
+    expect(find.text('Revisa lo marcado en rojo'), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Guardar'), findsNothing, reason: 'el editor debería cerrarse');
+    expect(state.agenda.items.single.title, 'Laura');
+  });
 }

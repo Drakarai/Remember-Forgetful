@@ -21,12 +21,6 @@ class LapsusDatabase {
       dbPath,
       options: OpenDatabaseOptions(
         version: _version,
-        onConfigure: (db) async {
-          // Permite leer y escribir a la vez desde la app y desde los
-          // botones de las notificaciones (que corren aparte).
-          await db.rawQuery('PRAGMA journal_mode=WAL');
-          await db.rawQuery('PRAGMA busy_timeout=5000');
-        },
         onCreate: (db, _) async {
           await _createSchema(db);
           final batch = db.batch();

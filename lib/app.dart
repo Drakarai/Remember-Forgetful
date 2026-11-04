@@ -14,6 +14,18 @@ import 'ui/screens/settings_screen.dart';
 import 'ui/screens/today_screen.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
+final messengerKey = GlobalKey<ScaffoldMessengerState>();
+
+/// Muestra en pantalla un error inesperado en vez de fallar en silencio.
+void reportError(Object error) {
+  final messenger = messengerKey.currentState;
+  if (messenger == null) return;
+  messenger.showSnackBar(SnackBar(
+    duration: const Duration(seconds: 8),
+    content: Text('Algo ha fallado: $error'),
+    action: SnackBarAction(label: 'Cerrar', onPressed: messenger.hideCurrentSnackBar),
+  ));
+}
 
 /// Abre la pantalla de un recordatorio (al tocar su notificación).
 void openReminder(String itemId, String dayKey) {
@@ -31,6 +43,7 @@ class LapsusApp extends StatelessWidget {
     final palette = AppPalette.byId(state.settings.themeId);
     return MaterialApp(
       navigatorKey: navigatorKey,
+      scaffoldMessengerKey: messengerKey,
       title: 'Lapsus',
       debugShowCheckedModeBanner: false,
       theme: palette.theme(Brightness.light),

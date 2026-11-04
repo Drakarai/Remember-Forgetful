@@ -19,7 +19,6 @@ import 'package:lapsus/state/app_state.dart';
 import 'package:lapsus/ui/screens/categories_screen.dart';
 import 'package:lapsus/ui/screens/editor_screen.dart';
 import 'package:lapsus/ui/screens/reminder_screen.dart';
-import 'package:lapsus/logic/dates.dart' show dateKey;
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
