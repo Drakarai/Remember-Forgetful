@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/item.dart';
 import '../../models/priority.dart';
 
 /// Icono de importancia (rayo, exclamación, punto o círculo vacío).
@@ -105,6 +106,29 @@ class Wordmark extends StatelessWidget {
         fontSize: size,
         letterSpacing: -size * 0.04,
         height: 1,
+      ),
+    );
+  }
+}
+
+/// Marca pequeña de color: círculo para eventos, cuadrado para tareas.
+class KindMarker extends StatelessWidget {
+  final ItemKind kind;
+  final Color color;
+  final double size;
+  final bool hollow;
+  const KindMarker({super.key, required this.kind, required this.color, this.size = 6, this.hollow = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: hollow ? null : color,
+        border: hollow ? Border.all(color: color, width: 1.2) : null,
+        shape: kind == ItemKind.event ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: kind == ItemKind.task ? BorderRadius.circular(size * 0.2) : null,
       ),
     );
   }

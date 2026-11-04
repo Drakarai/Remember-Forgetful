@@ -80,28 +80,33 @@ class OccurrenceTile extends StatelessWidget {
               height: 36,
               margin: const EdgeInsets.only(left: 6, right: 12),
               decoration: BoxDecoration(
-                color: item.priority == Priority.none ? scheme.outlineVariant : item.priority.color,
+                color: Color(category.color),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(
-                  item.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    decoration: o.done ? TextDecoration.lineThrough : null,
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (item.priority == Priority.critical || item.priority == Priority.important)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2, right: 4),
+                      child: Icon(item.priority.icon, size: 18, color: item.priority.color),
+                    ),
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        decoration: o.done ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
                   ),
-                ),
+                ]),
                 const SizedBox(height: 3),
                 Row(children: [
-                  if (item.priority == Priority.critical || item.priority == Priority.important) ...[
-                    Icon(item.priority.icon, size: 14, color: item.priority.color),
-                    const SizedBox(width: 3),
-                  ],
-                  Icon(categoryIcon(category.icon), size: 14, color: muted),
+                  Icon(categoryIcon(category.icon), size: 14, color: Color(category.color)),
                   const SizedBox(width: 4),
                   Flexible(child: Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: metaStyle)),
                   if (item.isRecurring || item.parentId != null) ...[
@@ -127,6 +132,7 @@ class _DoneButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final done = occurrence.done;
+    final isTask = occurrence.item.kind == ItemKind.task;
     return IconButton(
       tooltip: done ? 'Marcar como pendiente' : 'Marcar como hecho',
       onPressed: () {
@@ -136,8 +142,10 @@ class _DoneButton extends StatelessWidget {
       icon: AnimatedSwitcher(
         duration: const Duration(milliseconds: 150),
         child: done
-            ? Icon(Icons.check_circle_rounded, key: const ValueKey(1), color: scheme.primary, size: 26)
-            : Icon(Icons.radio_button_unchecked_rounded, key: const ValueKey(0), color: scheme.outline, size: 26),
+            ? Icon(isTask ? Icons.check_box_rounded : Icons.check_circle_rounded,
+                key: const ValueKey(1), color: scheme.primary, size: 26)
+            : Icon(isTask ? Icons.check_box_outline_blank_rounded : Icons.radio_button_unchecked_rounded,
+                key: const ValueKey(0), color: scheme.outline, size: 26),
       ),
     );
   }

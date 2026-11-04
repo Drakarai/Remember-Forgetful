@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../../logic/dates.dart';
 import '../../models/item.dart';
-import '../../models/priority.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_theme.dart';
 import '../format.dart';
@@ -149,6 +148,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ),
         ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+            child: _Legend(),
+          ),
+        ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
           sliver: SliverList.list(children: [
@@ -184,9 +189,10 @@ class _DayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final state = context.read<AppState>();
     final pending = items.where((o) => !o.done).toList()
       ..sort((a, b) => b.item.priority.weight.compareTo(a.item.priority.weight));
-    final dots = pending.take(3).toList();
+    final dots = pending.take(4).toList();
     final fg = isSelected
         ? scheme.onPrimary
         : (inMonth ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.3));
@@ -216,24 +222,44 @@ class _DayCell extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           SizedBox(
-            height: 5,
+            height: 6,
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               for (final o in dots)
-                Container(
-                  width: 5,
-                  height: 5,
-                  margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: o.item.priority == Priority.none ? scheme.outline : o.item.priority.color,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 1.2),
+                  child: KindMarker(
+                    kind: o.item.kind,
+                    color: Color(state.categoryOf(o.item.categoryId).color),
                   ),
                 ),
             ]),
           ),
-          if (tall && pending.length > 3)
-            Text('+${pending.length - 3}', style: theme.textTheme.labelSmall?.copyWith(color: fg)),
+          if (tall && pending.length > 4)
+            Text('+${pending.length - 4}', style: theme.textTheme.labelSmall?.copyWith(color: fg)),
         ]),
       ),
     );
+  }
+}
+
+/// Explica las formas de los puntos: círculo = evento, cuadrado = tarea.
+class _Legend extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final style = theme.textTheme.labelSmall?.copyWith(color: muted);
+    Widget entry(ItemKind kind, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
+          KindMarker(kind: kind, color: muted, size: 8),
+          const SizedBox(width: 6),
+          Text(label, style: style),
+        ]);
+    return Row(children: [
+      entry(ItemKind.event, 'Evento'),
+      const SizedBox(width: 16),
+      entry(ItemKind.task, 'Tarea'),
+      const Spacer(),
+      Text('Color = categoría', style: style),
+    ]);
   }
 }
